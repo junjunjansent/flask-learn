@@ -3,6 +3,9 @@ from jwt_util import jwt_encoder, jwt_verifier
 
 app = Flask(__name__)
 
+
+
+
 @app.route("/")
 def hello_world():
     return "<p>Hello, World!</p>"
@@ -59,6 +62,11 @@ def verify_token():
     return jsonify(decoded), 200
 
 
+# ------- bcrypt trial
+
+@app.route('/bcrypt-create', methods=['POST'])
+def sign_up():
+    return jsonify({"message": "Sign up route reached."})
 
 
 if __name__ == '__main__':
