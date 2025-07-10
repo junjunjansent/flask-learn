@@ -1,9 +1,9 @@
 from flask import Flask, Response, jsonify, request
 from jwt_util import jwt_encoder, jwt_verifier
+from bcrypt_util import hash_password, is_valid_hashed_pw
+from db_util import get_db_connection
 
 app = Flask(__name__)
-
-
 
 
 @app.route("/")
@@ -62,7 +62,27 @@ def verify_token():
     return jsonify(decoded), 200
 
 
-# ------- bcrypt trial
+# ------- bcrypt & db trial
+@app.route('/db', methods=['GET'])
+def get_users():
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute('SELECT * FROM users;')
+        data = cursor.fetchall()
+        
+        # # May need to convert to dictionary
+        # colnames = [desc[0] for desc in cursor.description]
+        # users = [dict(zip(colnames, row)) for row in data]
+        # return jsonify(users)
+
+        return jsonify(data)
+    except Exception as e:
+        print(e)
+        return {"error": "Something went wrong"}, 500
+    finally:
+        cursor.close()
+        connection.close()
 
 @app.route('/bcrypt-create', methods=['POST'])
 def sign_up():
