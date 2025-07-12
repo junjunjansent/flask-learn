@@ -1,7 +1,8 @@
+import psycopg2.extras
 from flask import Flask, Response, jsonify, request
-from jwt_util import jwt_encoder, jwt_verifier
-from bcrypt_util import hash_password, is_valid_hashed_pw
-from db_util import get_db_connection
+from utils.jwt_util import jwt_encoder, jwt_verifier
+from utils.bcrypt_util import hash_password, is_valid_hashed_pw
+from utils.db import get_db_connection, get_db_connection1
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -92,35 +93,79 @@ def get_users():
 
 @app.route('/bcrypt-sign-up', methods=['POST'])
 def sign_up():
+    # cannot do .values() because order may not be correct
     username = request.get_json().get('username')
     password = request.get_json().get('password')
 
-    connection = get_db_connection()
-    cursor = connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    if not username or not password:
+        return {"error": "Username & Password required"}, 401
 
     try: 
+        connection = get_db_connection()
+        cursor = connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
         # check username exists
         cursor.execute("SELECT * FROM users WHERE username = %s;", (username, ))
         existing_user = cursor.fetchone()
         if existing_user:
-            cursor.close()
             return {"error": "Username already taken"}, 401
+            # close in finally
         
         # start hashing password
         hashed_password = hash_password(password)
-        cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", [username, hashed_password])
+        cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, hashed_password))
         connection.commit() # save changes
-        return jsonify({"message": "Sign up route reached."})
+
+        # find the last insertion
+        cursor.execute("SELECT id, username FROM users WHERE username = %s;", (username,))
+        new_user = cursor.fetchone()
+
+        return jsonify({"message": "Sign up route reached.", "data":  new_user}), 201
     except Exception as err:
+        connection.rollback()
         print(err)
         return {"error": str(err)}, 401
     finally:
         cursor.close()
         connection.close()
 
+
 @app.route('/bcrypt-sign-in', methods=['POST'])
 def sign_in():
-    return jsonify({"message": "Sign In route reached."})
+    username = request.get_json().get('username')
+    password = request.get_json().get('password')
+
+    if not username or not password:
+        return {"error": "Username & Password required"}, 401
+    
+    try:
+        connection, cursor = get_db_connection1()
+
+        # find if user exists
+        cursor.execute("SELECT * FROM users WHERE username = %s;", (username, ))
+        existing_user = cursor.fetchone()
+        print(existing_user)
+        if not existing_user:
+            return {"error": "User does not exist"}, 401
+
+        # check if password is correct
+        obtained_password = existing_user["password"]
+        if not is_valid_hashed_pw(password, obtained_password):
+            return {"error": "Incorrect password"}, 401
+
+        # create token
+        user_data = dict(existing_user) # best practice
+        user_data.pop("password", None)
+        token = jwt_encoder(user_data)
+
+        return jsonify({"message": "Sign In route reached.", "data": {"token": token}}), 201
+    except Exception as err:
+        connection.rollback()
+        print(err)
+        return {"error": str(err)}, 401
+    finally:
+        cursor.close()
+        connection.close()
 
 
 if __name__ == '__main__':
