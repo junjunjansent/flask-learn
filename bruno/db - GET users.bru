@@ -1,11 +1,11 @@
 meta {
-  name: bcrypt - create
+  name: db - GET users
   type: http
-  seq: 3
+  seq: 6
 }
 
-post {
-  url: http://127.0.0.1:5000/bcrypt-sign-up
+get {
+  url: http://127.0.0.1:5000/db
   body: json
   auth: inherit
 }

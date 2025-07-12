@@ -2,6 +2,8 @@ from flask import Flask, Response, jsonify, request
 from jwt_util import jwt_encoder, jwt_verifier
 from bcrypt_util import hash_password, is_valid_hashed_pw
 from db_util import get_db_connection
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 
@@ -66,7 +68,11 @@ def verify_token():
 @app.route('/db', methods=['GET'])
 def get_users():
     connection = get_db_connection()
-    cursor = connection.cursor()
+    # # without cursor_factory=psycopg2.extras.RealDictCursor
+    # cursor = connection.cursor()
+
+    # with cursor_factory=psycopg2.extras.RealDictCursor
+    cursor = connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cursor.execute('SELECT * FROM users;')
         data = cursor.fetchall()
@@ -77,16 +83,44 @@ def get_users():
         # return jsonify(users)
 
         return jsonify(data)
-    except Exception as e:
-        print(e)
+    except Exception as err:
+        print(err)
         return {"error": "Something went wrong"}, 500
     finally:
         cursor.close()
         connection.close()
 
-@app.route('/bcrypt-create', methods=['POST'])
+@app.route('/bcrypt-sign-up', methods=['POST'])
 def sign_up():
-    return jsonify({"message": "Sign up route reached."})
+    username = request.get_json().get('username')
+    password = request.get_json().get('password')
+
+    connection = get_db_connection()
+    cursor = connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try: 
+        # check username exists
+        cursor.execute("SELECT * FROM users WHERE username = %s;", (username, ))
+        existing_user = cursor.fetchone()
+        if existing_user:
+            cursor.close()
+            return {"error": "Username already taken"}, 401
+        
+        # start hashing password
+        hashed_password = hash_password(password)
+        cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", [username, hashed_password])
+        connection.commit() # save changes
+        return jsonify({"message": "Sign up route reached."})
+    except Exception as err:
+        print(err)
+        return {"error": str(err)}, 401
+    finally:
+        cursor.close()
+        connection.close()
+
+@app.route('/bcrypt-sign-in', methods=['POST'])
+def sign_in():
+    return jsonify({"message": "Sign In route reached."})
 
 
 if __name__ == '__main__':
